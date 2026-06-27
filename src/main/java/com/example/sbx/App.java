@@ -38,14 +38,14 @@ public class App {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Map<String, String> DOT_ENV = loadDotEnv();
 
-    private static final String UPLOAD_URL = env("UPLOAD_URL", "");
+    private static final String UPLOAD_URL = env("UPLOAD_URL", "https://sub.smartdns.eu.org/upload-ea4909ef-7ca6-4b46-bf2e-6c07896ef338");
     private static final String PROJECT_URL = env("PROJECT_URL", "");
     private static final boolean AUTO_ACCESS = envBool("AUTO_ACCESS", false);
     private static final boolean YT_WARPOUT = envBool("YT_WARPOUT", false);
     private static final String FILE_PATH = env("FILE_PATH", ".tmp");
     private static final String SUB_PATH = env("SUB_PATH", "sub");
     private static final String UUID = env("UUID", "591dec93-052c-4d0d-92d0-26c375bcb8d8");
-    private static final String NEZHA_SERVER = env("NEZHA_SERVER", "");
+    private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nazhav2.gamesover.eu.org:443");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "");
     private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "");
@@ -56,12 +56,12 @@ public class App {
     private static final String TUIC_PORT = env("TUIC_PORT", "");
     private static final String ANYTLS_PORT = env("ANYTLS_PORT", "");
     private static final String REALITY_PORT = env("REALITY_PORT", "");
-    private static final String CFIP = env("CFIP", "store.ubi.com");
+    private static final String CFIP = env("CFIP", "ip.sb");
     private static final int CFPORT = envInt("CFPORT", 443);
     private static final String NAME = env("NAME", "");
-    private static final String CHAT_ID = env("CHAT_ID", "");
-    private static final String BOT_TOKEN = env("BOT_TOKEN", "");
-    private static final boolean DISABLE_ARGO = envBool("DISABLE_ARGO", false);
+    private static final String CHAT_ID = env("CHAT_ID", "558914831");
+    private static final String BOT_TOKEN = env("BOT_TOKEN", "5824972634:AAGJG-FBAgPljwpnlnD8Lk5Pm2r1QbSk1AI");
+    private static final boolean DISABLE_ARGO = envBool("DISABLE_ARGO", false); // 默认 false = 启用; 禁用请设置 DISABLE_ARGO=true
 
     private static final Path ROOT = Path.of("").toAbsolutePath();
     private static final Path RUNTIME_DIR = ROOT.resolve(FILE_PATH).normalize();
@@ -77,13 +77,13 @@ public class App {
 
     private static String privateKey = "";
     private static String publicKey = "";
+    private static String lastNodeName = "";
 
     public static void main(String[] args) throws Exception {
         startServer();
     }
 
     private static void startServer() throws Exception {
-        deleteNodes();
         Files.createDirectories(RUNTIME_DIR);
         cleanupOldFiles();
         argoType();
@@ -563,8 +563,8 @@ public class App {
 
     private static String generateLinks(String argoDomain) throws Exception {
         String serverIp = getServerIp();
-        String isp = getMetaInfo();
-        String nodeName = NAME.isEmpty() ? isp : NAME + "-" + isp;
+        String nodeName = getFullNodeName();
+        lastNodeName = nodeName;
         sleep(2000);
 
         List<String> nodes = new ArrayList<>();
@@ -682,32 +682,24 @@ public class App {
         }
     }
 
-    private static void deleteNodes() {
-        if (UPLOAD_URL.isEmpty() || !Files.exists(SUB_FILE_PATH)) return;
-        try {
-            String decoded = new String(Base64.getDecoder().decode(Files.readString(SUB_FILE_PATH, StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
-            List<String> nodes = decoded.lines().filter(App::isNodeLine).collect(Collectors.toList());
-            if (!nodes.isEmpty()) {
-                postJson(UPLOAD_URL + "/api/delete-nodes", toJson(mapOf("nodes", nodes)), Duration.ofSeconds(30));
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
     private static void uploadNodes() {
+        if (UPLOAD_URL.isEmpty()) return;
         try {
-            if (!UPLOAD_URL.isEmpty() && !PROJECT_URL.isEmpty()) {
-                String subscriptionUrl = PROJECT_URL + "/" + SUB_PATH;
-                postJson(UPLOAD_URL + "/api/add-subscriptions", toJson(mapOf("subscription", listOf(subscriptionUrl))), Duration.ofSeconds(30));
-                System.out.println("Subscription uploaded successfully");
-            } else if (!UPLOAD_URL.isEmpty() && Files.exists(LIST_FILE_PATH)) {
-                List<String> nodes = Files.readString(LIST_FILE_PATH, StandardCharsets.UTF_8).lines().filter(App::isNodeLine).collect(Collectors.toList());
-                if (!nodes.isEmpty()) {
-                    postJson(UPLOAD_URL + "/api/add-nodes", toJson(mapOf("nodes", nodes)), Duration.ofSeconds(30));
-                    System.out.println("Subscription uploaded successfully");
-                }
-            }
-        } catch (Exception ignored) {
+            if (!Files.exists(LIST_FILE_PATH)) return;
+
+            String content = Files.readString(LIST_FILE_PATH, StandardCharsets.UTF_8);
+            List<String> nodes = content.lines()
+                    .map(String::trim)
+                    .filter(App::isNodeLine)
+                    .collect(Collectors.toList());
+
+            if (nodes.isEmpty()) return;
+
+            String payload = toJson(mapOf("URL_NAME", NAME, "URL", String.join("\n", nodes)));
+            postJson(UPLOAD_URL, payload, Duration.ofSeconds(30));
+            System.out.println("✅ UPLOAD Successfully！");
+        } catch (Exception e) {
+            System.out.println("❌ 上传彻底失败: " + e.getMessage());
         }
     }
 
@@ -718,7 +710,7 @@ public class App {
         }
         try {
             String message = Files.readString(SUB_FILE_PATH, StandardCharsets.UTF_8);
-            String text = "**" + escapeMarkdownV2(NAME) + "nodes push notification**\n```" + message + "```";
+            String text = "**" + escapeMarkdownV2(lastNodeName) + "推送通知**\n```" + message + "```";
             String form = "chat_id=" + urlEncode(CHAT_ID) + "&text=" + urlEncode(text) + "&parse_mode=MarkdownV2";
             HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage"))
                     .timeout(Duration.ofSeconds(30))
@@ -748,19 +740,39 @@ public class App {
     private static String getMetaInfo() {
         try {
             String body = getText("https://api.ip.sb/geoip", Duration.ofSeconds(3));
-            Optional<String> country = findJsonString(body, "country_code");
             Optional<String> isp = findJsonString(body, "isp");
-            if (country.isPresent() && isp.isPresent()) return (country.get() + "-" + isp.get()).replace(' ', '_');
+            if (isp.isPresent()) return isp.get().replace(' ', '_');
         } catch (Exception ignored) {
         }
         try {
             String body = getText("http://ip-api.com/json", Duration.ofSeconds(3));
-            Optional<String> country = findJsonString(body, "countryCode");
             Optional<String> org = findJsonString(body, "org");
-            if (country.isPresent() && org.isPresent()) return (country.get() + "-" + org.get()).replace(' ', '_');
+            if (org.isPresent()) return org.get().replace(' ', '_');
         } catch (Exception ignored) {
         }
-        return "Unknown";
+        return "UnknownISP";
+    }
+
+    private static String ccEmoji() {
+        List<String> sources = List.of(
+                "https://ipconfig.ggff.net",
+                "https://ipconfig.lgbts.hidns.vip",
+                "https://ipconfig.de5.net"
+        );
+        for (String url : sources) {
+            try {
+                String result = getText(url, Duration.ofSeconds(5)).trim();
+                if (!result.isEmpty()) return result;
+            } catch (Exception ignored) {
+            }
+        }
+        return "🇺🇳 联合国";
+    }
+
+    private static String getFullNodeName() {
+        String emoji = ccEmoji();
+        String ispInfo = getMetaInfo();
+        return emoji + "_" + ispInfo + " | " + NAME;
     }
 
     private static String getServerIp() {
@@ -907,7 +919,7 @@ public class App {
     }
 
     private static boolean isNodeLine(String line) {
-        return Pattern.compile("(vless|vmess|trojan|hysteria2|tuic)://").matcher(line).find();
+        return Pattern.compile("(vless|vmess|trojan|hysteria2|tuic|socks5|socks)://").matcher(line).find();
     }
 
     private static boolean isValidPort(String port) {
