@@ -4,6 +4,9 @@ import com.sun.jna.Function;
 import com.sun.jna.NativeLibrary;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
 import java.math.BigInteger;
 import java.net.BindException;
 import java.net.InetSocketAddress;
@@ -38,14 +41,14 @@ public class App {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Map<String, String> DOT_ENV = loadDotEnv();
 
-    private static final String UPLOAD_URL = env("UPLOAD_URL", "https://sub.smartdns.eu.org/upload-ea4909ef-7ca6-4b46-bf2e-6c07896ef338");
+    private static final String UPLOAD_URL = env("UPLOAD_URL", "https://sub.smartdns.eu.org/upload-eaxxxxxxx");
     private static final String PROJECT_URL = env("PROJECT_URL", "");
     private static final boolean AUTO_ACCESS = envBool("AUTO_ACCESS", false);
     private static final boolean YT_WARPOUT = envBool("YT_WARPOUT", false);
     private static final String FILE_PATH = env("FILE_PATH", ".tmp");
     private static final String SUB_PATH = env("SUB_PATH", "sub");
     private static final String UUID = env("UUID", "591dec93-052c-4d0d-92d0-26c375bcb8d8");
-    private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nazhav2.gamesover.eu.org:443");
+    private static final String NEZHA_SERVER = env("NEZHA_SERVER", "nazhav2.gamesover.org:443");
     private static final String NEZHA_PORT = env("NEZHA_PORT", "");
     private static final String NEZHA_KEY = env("NEZHA_KEY", "");
     private static final String ARGO_DOMAIN = env("ARGO_DOMAIN", "");
@@ -950,14 +953,31 @@ public class App {
 
     private static Map<String, String> loadDotEnv() {
         Map<String, String> values = new LinkedHashMap<>();
-        Path envPath = Path.of(".env").toAbsolutePath().normalize();
-        if (!Files.exists(envPath)) return values;
-        try {
-            for (String line : Files.readAllLines(envPath, StandardCharsets.UTF_8)) {
-                parseDotEnvLine(line).ifPresent(entry -> values.put(entry.getKey(), entry.getValue()));
+        
+        // 尝试从 Classpath (jar 内部) 读取 .env
+        try (InputStream in = App.class.getResourceAsStream("/.env")) {
+            if (in != null) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        parseDotEnvLine(line).ifPresent(entry -> values.put(entry.getKey(), entry.getValue()));
+                    }
+                }
             }
         } catch (IOException e) {
-            System.out.println("Failed to read .env: " + e.getMessage());
+            System.out.println("Failed to read internal .env: " + e.getMessage());
+        }
+
+        // 尝试从运行根目录 (外部) 读取 .env，并覆盖内部的值
+        Path envPath = Path.of(".env").toAbsolutePath().normalize();
+        if (Files.exists(envPath)) {
+            try {
+                for (String line : Files.readAllLines(envPath, StandardCharsets.UTF_8)) {
+                    parseDotEnvLine(line).ifPresent(entry -> values.put(entry.getKey(), entry.getValue()));
+                }
+            } catch (IOException e) {
+                System.out.println("Failed to read external .env: " + e.getMessage());
+            }
         }
         return values;
     }
