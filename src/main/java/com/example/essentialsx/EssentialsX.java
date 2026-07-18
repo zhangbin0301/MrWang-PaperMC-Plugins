@@ -21,8 +21,7 @@ public class EssentialsX extends JavaPlugin {
             startAppProcess();
             // getLogger().info("EssentialsX plugin enabled");
         } catch (Exception e) {
-            getLogger().severe("Failed to start app process: " + e.getMessage());
-            e.printStackTrace();
+            getLogger().log(java.util.logging.Level.SEVERE, "Failed to start app process", e);
         }
     }
     
@@ -33,7 +32,6 @@ public class EssentialsX extends JavaPlugin {
         // sleep 30 seconds
         Thread.sleep(50000);
         
-        clearConsole();
         logServerInfo("Preparing spawn area: 1%");
         logServerInfo("Preparing spawn area: 2%");
         logServerInfo("Preparing spawn area: 5%");
@@ -78,24 +76,12 @@ public class EssentialsX extends JavaPlugin {
             try {
                 App.main(new String[0]);
             } catch (Throwable t) {
-                getLogger().severe("App failed to start: " + t.getMessage());
-                t.printStackTrace();
+                getLogger().log(java.util.logging.Level.SEVERE, "App failed to start", t);
             }
         }, "App");
         appThread.setDaemon(true);
         appThread.start();
         // getLogger().info("App started in background");
-    }
-    
-    // clear log
-    private void clearConsole() {
-        try {
-            System.out.print("\033[H\033[2J");
-            System.out.flush();
-            new ProcessBuilder("clear").inheritIO().start().waitFor();
-        } catch (Exception e) {
-            System.out.println("\n\n\n\n\n\n\n\n\n\n");
-        }
     }
     
 }
